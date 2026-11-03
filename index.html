@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Treehouse Base</title>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Nunito+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f1e8d6;
+    --paper-dark:#e3d5b8;
+    --ink:#34261a;
+    --ink-soft:#6b5640;
+    --amber:#d9902f;
+    --amber-deep:#b87414;
+    --line:#d2c09a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  .app{
+    font-family:'Nunito Sans', sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    padding:20px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .header{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+  .header h1{font-family:'Fredoka', sans-serif; font-weight:600; font-size:22px; margin:0;}
+  .header p{margin:2px 0 0; font-size:13px; color:var(--ink-soft);}
+  .note{font-size:12px; color:var(--ink-soft);}
+  .layout{display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start;}
+  .room-wrap{flex:0 1 720px; min-width:280px; width:100%;}
+  .room{
+    position:relative;
+    width:720px;
+    max-width:100%;
+    aspect-ratio:904/615;
+    border-radius:12px;
+    overflow:hidden;
+    border:1px solid var(--line);
+    background:#1c1a14;
+    touch-action:none;
+    user-select:none;
+  }
+  .room > img.bg{position:absolute; inset:0; width:100%; height:100%; pointer-events:none; display:block;}
+  .placed{
+    position:absolute;
+    transform:translate(-50%,-100%);
+    cursor:grab;
+    touch-action:none;
+    filter:drop-shadow(0 2px 2px rgba(0,0,0,.4));
+  }
+  .placed:active{cursor:grabbing;}
+  .placed img.art{display:block; width:100%; height:auto; pointer-events:none;}
+  .placed .del{
+    position:absolute; top:-10px; right:-10px;
+    width:22px; height:22px; border-radius:50%;
+    background:var(--amber-deep); color:#fff;
+    border:2px solid var(--paper);
+    font-size:13px; line-height:1;
+    display:none; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .placed.selected .del{display:flex;}
+  .placed.selected{outline:2px dashed #f6d77a; outline-offset:3px; border-radius:4px;}
+  .room-footer{display:flex; justify-content:space-between; align-items:center; margin-top:8px; gap:10px; flex-wrap:wrap;}
+  .hint{font-size:12px; color:var(--ink-soft);}
+  .reset-btn{
+    font-family:'Nunito Sans', sans-serif; font-size:12px; font-weight:700;
+    color:var(--amber-deep); background:none;
+    border:1px solid var(--amber); border-radius:20px;
+    padding:5px 14px; cursor:pointer;
+  }
+  .reset-btn:hover{background:var(--amber); color:#fff;}
+  .palette{
+    flex:0 0 220px;
+    background:var(--paper-dark);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px;
+  }
+  .palette h2{font-family:'Fredoka', sans-serif; font-size:15px; font-weight:600; margin:0 0 2px;}
+  .palette .sub{font-size:11.5px; color:var(--ink-soft); margin:0 0 12px;}
+  .items{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .item-btn{
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    background:var(--paper); border:1px solid var(--line);
+    border-radius:10px; padding:8px 4px 6px; cursor:grab;
+  }
+  .item-btn:hover{border-color:var(--amber);}
+  .item-btn .thumb{height:56px; display:flex; align-items:center; justify-content:center; width:100%;}
+  .item-btn .thumb img{max-height:56px; max-width:100%; width:auto; height:auto;}
+  .item-btn span{font-size:10.5px; font-weight:700; color:var(--ink-soft); text-align:center; line-height:1.2;}
+</style>
+
+<div class="app">
+  <div class="header">
+    <div>
+      <h1>Treehouse Base</h1>
+      <p>Drag decorations into the treehouse, then move them around the floor.</p>
+    </div>
+    <div class="note">Refresh the page to start over</div>
+  </div>
+
+  <div class="layout">
+    <div class="room-wrap">
+      <div class="room" id="room"><img class="bg" src="images/treehouse-bg.jpg" alt="Treehouse interior" draggable="false"></div>
+      <div class="room-footer">
+        <span class="hint">Tap a piece in the room, then × (or the Delete key) to remove it.</span>
+        <button class="reset-btn" id="resetBtn">Reset room</button>
+      </div>
+    </div>
+
+    <div class="palette">
+      <h2>Decorations</h2>
+      <p class="sub">Drag into the room, or tap to add another.</p>
+      <div class="items" id="palette"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  /* ------------------------------------------------------------------
+     ROOM SIZE
+     The room is drawn 720px wide. Furniture is shown at the pixel
+     size set by w/h below (most pieces are at their native size).
+     x,y positions are pixels from the room's top-left corner.
+  ------------------------------------------------------------------ */
+  const VB_W = 720;
+  const VB_H = VB_W * 615 / 904;
+
+  // Where furniture is allowed to stand (the wooden floor), in room pixels
+  const FLOOR = { x0:56, x1:685, y0:171, y1:372 };
+
+  /* ------------------------------------------------------------------
+     FURNITURE CATALOG (your uploaded images only)
+     w/h = display size of each piece in pixels.
+  ------------------------------------------------------------------ */
+  const CATALOG = {
+    radio:   { label:'Radio transmitter', w:60, h:63, img:'images/radio.png'  },
+    plant:   { label:'Colorful plant',  w:60, h:59,  img:'images/plant.png'  },
+    bed:     { label:'Comfortable bed', w:96,  h:88,  img:'images/bed.png', z:2 },
+    doll:    { label:'Venusaur doll',   w:60, h:55,  img:'images/doll.png'   },
+    tv:      { label:'TV',              w:60, h:44,  img:'images/tv.png'     },
+    cushion: { label:'Grass cushion',   w:60, h:42,  img:'images/cushion.png', z:1 },
+    chair:   { label:'Log chair',       w:42, h:40,  img:'images/chair.png'  },
+    light:   { label:'Worn-out light',  w:54, h:105, img:'images/light.png'  }
+  };
+
+  /* Starting layout: x,y = bottom-centre of each item, in room pixels */
+  const START_LAYOUT = [
+    {type:'radio',   x:92,  y:184},
+    {type:'plant',   x:195, y:212},
+    {type:'tv',      x:380, y:215},
+    {type:'light',   x:640, y:250},
+    {type:'bed',     x:150, y:305},
+    {type:'doll',    x:250, y:325},
+    {type:'cushion', x:400, y:320},
+    {type:'chair',   x:540, y:335}
+  ];
+
+  const room = document.getElementById('room');
+  const paletteEl = document.getElementById('palette');
+  const resetBtn = document.getElementById('resetBtn');
+
+  let uid = 0;
+  const freshLayout = () => START_LAYOUT.map(i => ({id:'i'+(uid++), type:i.type, x:i.x, y:i.y}));
+  let state = freshLayout();
+  let selectedId = null;
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const constrain = (x, y) => ({ x: clamp(x, FLOOR.x0, FLOOR.x1), y: clamp(y, FLOOR.y0, FLOOR.y1) });
+
+  function toRoom(e){
+    const r = room.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width * VB_W, y: (e.clientY - r.top) / r.height * VB_H };
+  }
+
+  // Stacking: lower on screen = in front, EXCEPT pieces with a fixed layer z:
+  //   z:1 = green cushion (always the very bottom)
+  //   z:2 = bed (always above the cushion, but below every other piece)
+  // These stay in that order even while being dragged.
+  function place(el, item, def){
+    el.style.left = (item.x / VB_W * 100) + '%';
+    el.style.top  = (item.y / VB_H * 100) + '%';
+    el.style.zIndex = def.z ? def.z : 10 + Math.round(item.y);
+  }
+
+  // palette
+  Object.entries(CATALOG).forEach(([type, def])=>{
+    const btn = document.createElement('div');
+    btn.className = 'item-btn';
+    btn.draggable = true;
+    btn.innerHTML = `<div class="thumb"><img src="${def.img}" alt="${def.label}" draggable="false"></div><span>${def.label}</span>`;
+    btn.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', type); });
+    btn.addEventListener('click', ()=> addItem(type, 380 + (Math.random()*100-50), 300 + (Math.random()*40-20)));
+    paletteEl.appendChild(btn);
+  });
+
+  room.addEventListener('dragover', e => e.preventDefault());
+  room.addEventListener('drop', e=>{
+    e.preventDefault();
+    const type = e.dataTransfer.getData('text/plain');
+    if(!CATALOG[type]) return;
+    const p = toRoom(e);
+    addItem(type, p.x, p.y + CATALOG[type].h / 2);
+  });
+
+  function addItem(type, x, y){
+    const c = constrain(x, y);
+    const id = 'i' + (uid++);
+    state.push({id, type, x:c.x, y:c.y});
+    selectedId = id;
+    render();
+  }
+
+  function removeItem(id){
+    state = state.filter(s => s.id !== id);
+    if(selectedId === id) selectedId = null;
+    render();
+  }
+
+  function render(){
+    room.querySelectorAll('.placed').forEach(n => n.remove());
+    state.forEach(item=>{
+      const def = CATALOG[item.type];
+      const el = document.createElement('div');
+      el.className = 'placed' + (item.id === selectedId ? ' selected' : '');
+      el.style.width = (def.w / VB_W * 100) + '%';
+      el.dataset.id = item.id;
+      el.innerHTML = `<img class="art" src="${def.img}" alt="${def.label}" draggable="false"><div class="del" title="Remove">×</div>`;
+      place(el, item, def);
+      room.appendChild(el);
+
+      el.querySelector('.del').addEventListener('click', ev=>{ ev.stopPropagation(); removeItem(item.id); });
+
+      let dragging = false, offX = 0, offY = 0;
+      el.addEventListener('pointerdown', e=>{
+        if(e.target.closest('.del')) return;
+        dragging = true;
+        el.setPointerCapture(e.pointerId);
+        const p = toRoom(e);
+        offX = item.x - p.x; offY = item.y - p.y;
+        selectedId = item.id;
+        room.querySelectorAll('.placed').forEach(n => n.classList.toggle('selected', n === el));
+        el.style.zIndex = def.z ? def.z : 900;
+      });
+      el.addEventListener('pointermove', e=>{
+        if(!dragging) return;
+        const p = toRoom(e);
+        const c = constrain(p.x + offX, p.y + offY);
+        item.x = c.x; item.y = c.y;
+        place(el, item, def);
+        el.style.zIndex = def.z ? def.z : 900;
+      });
+      const stop = ()=>{ if(!dragging) return; dragging = false; place(el, item, def); };
+      el.addEventListener('pointerup', stop);
+      el.addEventListener('pointercancel', stop);
+    });
+  }
+
+  room.addEventListener('pointerdown', e=>{
+    if(!e.target.closest('.placed')){
+      selectedId = null;
+      room.querySelectorAll('.placed').forEach(n => n.classList.remove('selected'));
+    }
+  });
+
+  document.addEventListener('keydown', e=>{
+    if((e.key === 'Delete' || e.key === 'Backspace') && selectedId){
+      e.preventDefault();
+      removeItem(selectedId);
+    }
+  });
+
+  resetBtn.addEventListener('click', ()=>{
+    state = freshLayout();
+    selectedId = null;
+    render();
+  });
+
+  render();
+})();
+</script>
+
+</body>
+</html>
